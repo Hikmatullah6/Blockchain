@@ -1,12 +1,21 @@
 const SHA256 = require('crypto-js/sha256');
 
+// Transaction class
+class Transaction {
+    // Constructor for transactions.
+    constructor(fromAddress, toAddress, amount) {
+        this.fromAddress = fromAddress;
+        this.toAddress = toAddress;
+        this.amount = amount;
+    }
+}
+
 // Block class
 class Block {
-    // Constructor used to create blocks.
-    constructor(index, timestamp, data, previousHash = '') {
-        this.index = index;
+    // Constructor for block creation.
+    constructor(timestamp, transactions, previousHash = '') {
         this.timestamp = timestamp;
-        this.data = data;
+        this.transactions = transactions;
         this.previousHash = previousHash;
         this.hash = this.calculateHash();
         this.nonce = 0; // "Number used only once" added for mining process. 
@@ -35,14 +44,16 @@ class Blockchain {
     // Constructor for the chain. Creates an array with the Genesis Block as the first block.
     constructor() {
         this.chain = [this.createGenesisBlock()];
-        this.difficulty = 5;    // Set difficulty to a number (the larger the number, the longer it takes to mine). 
+        this.difficulty = 2;    // Set difficulty to a number (the larger the number, the longer it takes to mine). 
+        this.pendingTransactions = [];  // Array of pending transactions
+        this.miningReward = 100;    // Reward for mining 
     }
 
     // Create the Genesis Block. 
     // The Genesis Block doesn't have a previous hash due to it being the first block in the chain. 
     // This Genesis Block was created on the first day of this year (for example).
     createGenesisBlock() {
-        return new Block(0, "01/01/2024", "Genesis block", "0");
+        return new Block("01/01/2024", "Genesis block", "0");
     }
 
     // Return the latest block in the chain.
@@ -51,11 +62,50 @@ class Blockchain {
     }
 
     // Add a new block to the chain. 
-    addBlock(newBlock) {
-        newBlock.previousHash = this.getLatestBlock().hash; // The latest block's hash will be the previous hash of the newly created block.
-        // newBlock.hash = newBlock.calculateHash();   // Calculate hash for the new block.
-        newBlock.mineBlock(this.difficulty);    // Mine block
-        this.chain.push(newBlock);  // Add the new block to the chain.
+    // addBlock(newBlock) {
+    //     newBlock.previousHash = this.getLatestBlock().hash; // The latest block's hash will be the previous hash of the newly created block.
+    //     // newBlock.hash = newBlock.calculateHash();   // Calculate hash for the new block.
+    //     newBlock.mineBlock(this.difficulty);    // Mine block
+    //     this.chain.push(newBlock);  // Add the new block to the chain.
+    // }
+
+    // Send mining rewards to address
+    minePendingTransactions(miningRewardAddress) {
+        let block = new Block(Date.now(), this.pendingTransactions);
+        block.mineBlock(this.difficulty);   // Mine block
+
+        console.log("Block successfully mined!");
+        this.chain.push(block); // Add to chain
+
+        this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)]; // Send reward to address
+    }
+
+    // Receive transaction and add transaction to pending transaction array
+    createTransaction(transaction) {
+        this.pendingTransactions.push(transaction);
+    }
+
+    // Check balance of address
+    getBalanceOfAddress(address) {
+        let balance = 0;
+
+        // Loop over blocks of chain
+        for (const block of this.chain) {
+            // Loop over the transactions in the block
+            for (const trans of block.transactions) {
+                // If you are the from address, that means you transferred coins to someone.
+                if (trans.fromAddress === address) {
+                    balance -= trans.amount;    // Decrease balance
+                }
+
+                // If you are the toAddress, that means someone transferred coins to you.
+                if (trans.toAddress === address) {
+                    balance += trans.amount;    // Increase balance
+                }
+            }
+        }
+
+        return balance; // Return balance
     }
 
     // Check if the chain is valid.
@@ -83,6 +133,8 @@ class Blockchain {
     }
 }
 
+// Testing
+
 // Test 1: Adding to blockchain, and tampering.
 // let exampleCoin = new Blockchain(); // Example coin
 // exampleCoin.addBlock(new Block(1, "10/07/2024", { amount: 4 }));    // Add 4 exampleCoins to the blockchain.
@@ -97,10 +149,26 @@ class Blockchain {
 // console.log(JSON.stringify(exampleCoin, null, 4));
 
 // Test 2: Mining blocks
-let exampleCoin = new Blockchain(); // Example coin
+// let exampleCoin = new Blockchain(); // Example coin
 
-console.log("Mining block 1...");
-exampleCoin.addBlock(new Block(1, "10/07/2024", { amount: 4 }));    // Add 4 exampleCoins to the blockchain.
+// console.log("Mining block 1...");
+// exampleCoin.addBlock(new Block(1, "10/07/2024", { amount: 4 }));    // Add 4 exampleCoins to the blockchain.
 
-console.log("Mining block 2...");
-exampleCoin.addBlock(new Block(2, "12/07/2024", { amount: 10 }));   // Add another 10 exampleCoins to the blockchain.
+// console.log("Mining block 2...");
+// exampleCoin.addBlock(new Block(2, "12/07/2024", { amount: 10 }));   // Add another 10 exampleCoins to the blockchain.
+
+// Test 3: 
+let exampleCoin = new Blockchain();
+
+exampleCoin.createTransaction(new Transaction("address1", "address2", 100));
+exampleCoin.createTransaction(new Transaction("address2", "address1", 50));
+
+console.log("\nStarting the miner...");
+exampleCoin.minePendingTransactions("hussains-address");
+
+console.log("\nBalance of hussain is", exampleCoin.getBalanceOfAddress("hussains-address"));
+
+console.log("\nStarting the miner again...");
+exampleCoin.minePendingTransactions("hussains-address");
+
+console.log("\nBalance of hussain is", exampleCoin.getBalanceOfAddress("hussains-address"));
