@@ -1,5 +1,7 @@
-
+// Import libraries
 const SHA256 = require('crypto-js/sha256');
+const EC = require('elliptic').ec;
+const ec = new EC('secp256k1');
 
 // Transaction class
 class Transaction {
@@ -8,6 +10,36 @@ class Transaction {
         this.fromAddress = fromAddress;
         this.toAddress = toAddress;
         this.amount = amount;
+    }
+
+    // Calculate hash for transaction
+    calculateHash() {
+        return SHA256(this.address + this.toAddress + this.amount).toString();
+    }
+
+    // Sign transaction
+    signTranaction(signingKey) {
+        // Check if public key equals fromAddress
+        if (signingKey.getPublic("hex") !== this.fromAddress) {
+            throw new Error("You cannot sign transactions for other wallets!");
+        }
+
+        const hashTx = this.calculateHash();    // Create hash of transaction
+        const sig = signingKey.sign(hashTx, "base64");  // Sign the hash of transaction in base64
+        this.signature = sig.toDER("hex");  // Store signature 
+    }
+
+    // Check if transaction is valid
+    isValid() {
+        if (this.fromAddress === null) return true; // Assume valid due to mining rewards
+
+        // Check if theres a signature
+        if (!this.signature || this.signature.length === 0) {
+            throw new Error("No signature in this transaction");
+        }
+
+        const publicKey = ec.keyFromPublic(this.fromAddress, "hex");    // Extract public key
+        return publicKey.verify(this.calculateHash(), this.signature);    // Verify hash of block has been signed by signature
     }
 }
 
@@ -37,6 +69,19 @@ class Block {
             this.hash = this.calculateHash();   // Calculate hash
         }
         console.log("Block mined: " + this.hash);
+    }
+
+    // Verify all transactions in current block
+    hasValidTransactions() {
+        // For each transaction
+        for (const tx of this.transactions) {
+            // If transaction is not valid, return false
+            if (!tx.isValid()) {
+                return false;
+            }
+        }
+        // Return true due to transactions being valid
+        return true;
     }
 }
 
@@ -70,19 +115,45 @@ class Blockchain {
     //     this.chain.push(newBlock);  // Add the new block to the chain.
     // }
 
+    // // Send mining rewards to address
+    // minePendingTransactions(miningRewardAddress) {
+    //     let block = new Block(Date.now(), this.pendingTransactions);
+    //     block.mineBlock(this.difficulty);   // Mine block
+
+    //     console.log("Block successfully mined!");
+    //     this.chain.push(block); // Add to chain
+
+    //     this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)]; // Send reward to address
+    // }
+
     // Send mining rewards to address
     minePendingTransactions(miningRewardAddress) {
-        let block = new Block(Date.now(), this.pendingTransactions);
+        const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward); // Mining reward
+        this.pendingTransactions.push(rewardTx);    // Add reward to pending transaction
+
+        let block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);    // Create block
         block.mineBlock(this.difficulty);   // Mine block
 
         console.log("Block successfully mined!");
         this.chain.push(block); // Add to chain
 
-        this.pendingTransactions = [new Transaction(null, miningRewardAddress, this.miningReward)]; // Send reward to address
+        this.pendingTransactions = [];  // Set array to empty
     }
 
     // Receive transaction and add transaction to pending transaction array
-    createTransaction(transaction) {
+    addTransaction(transaction) {
+
+        // Check if transaction has to and from address
+        if (!transaction.toAddress || !transaction.fromAddress) {
+            throw new Error("Transaction must include to and from address");
+        }
+
+        // Check if transaction is valid
+        if (!transaction.isValid()) {
+            throw new Error("Cannot add invalid transaction to chain");
+        }
+
+        // Add to pendingTransactions
         this.pendingTransactions.push(transaction);
     }
 
@@ -118,6 +189,11 @@ class Blockchain {
             const currentBlock = this.chain[i];
             const previousBlock = this.chain[i - 1];
 
+            // Check if block has valid transactions
+            if (!currentBlock.hasValidTransactions()) {
+                return false;
+            }
+
             // Check if the hash for the current block is the same when recalculated.
             // This will make sure there has been no tampering with the current block by ensuring the hash is the same when recalculated.
             if (currentBlock.hash !== currentBlock.calculateHash()) {
@@ -134,5 +210,6 @@ class Blockchain {
     }
 }
 
+// Export
 module.exports.Blockchain = Blockchain;
 module.exports.Transaction = Transaction;
